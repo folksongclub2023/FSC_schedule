@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSC 練習日程調整</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f4f5f7;
+            color: #2c333a;
+        }
+        /* テーブルの固定ヘッダー・固定列用スタイル */
+        .sticky-col-1 {
+            position: sticky;
+            left: 0;
+            z-index: 20;
+        }
+        .sticky-col-2 {
+            position: sticky;
+            left: 96px;
+            z-index: 20;
+        }
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+        }
+        .sticky-corner {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+        .table-container::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #adb5bd;
+            border-radius: 4px;
+        }
+        .step-active {
+            background-color: #3b4954;
+            color: #ffffff;
+            border-color: #3b4954;
+        }
+        .step-inactive {
+            background-color: #ffffff;
+            color: #5c6670;
+            border-color: #d0d7de;
+        }
+        .drag-item {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .drag-floating {
+            background-color: #ffffff !important;
+            border-color: #475569 !important;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18) !important;
+            cursor: grabbing !important;
+            transition: none !important;
+        }
+        .drag-placeholder {
+            pointer-events: none;
+        }
+        .drag-placeholder-item {
+            border-style: dashed !important;
+            border-color: #94a3b8 !important;
+            background-color: rgba(226, 232, 240, 0.5) !important;
+        }
+        .drag-placeholder-item > * {
+            opacity: 0 !important;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased">
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        
+        <!-- ステップナビゲーションバー -->
+        <nav class="mb-6 bg-white p-4 rounded-2xl shadow-xs border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-center">
+                <button id="nav-step-1" onclick="goToStep(1)" class="step-active px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center gap-1.5">
+                    <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs">1</span>
+                    <span>予定ペースト入力</span>
+                </button>
+                <svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                <button id="nav-step-2" onclick="tryGoToStep(2)" class="step-inactive px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center gap-1.5">
+                    <span class="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center text-xs">2</span>
+                    <span>優先度設定（任意）</span>
+                </button>
+                <svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                <button id="nav-step-3" onclick="tryGoToStep(3)" class="step-inactive px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center gap-1.5">
+                    <span class="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center text-xs">3</span>
+                    <span>練習日程調整</span>
+                </button>
+            </div>
+            <div class="text-xs text-slate-500 hidden md:block">
+                ※テキスト貼り付けで自動集計します
+            </div>
+        </nav>
+
+        <!-- ==================== テキスト入力画面 ==================== -->
+        <section id="view-step-1" class="space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200/80">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800">全員の予定テキストを読み込む</h2>
+                        <p class="text-sm text-slate-500 mt-1">LINEやドキュメントの日程調整テキストを貼り付けて自動集計します。</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="clearInputText()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition">
+                            入力をクリア
+                        </button>
+                    </div>
+                </div>
+
+                <!-- タイトル・対象年設定 -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">イベント・グループ名（タイトル）</label>
+                        <input type="text" id="input-title" value="FSC 練習日程調整" oninput="syncTitleFromInput()" placeholder="例：FSC 練習日程調整" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">基準年（曜日自動計算用）</label>
+                        <div class="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-slate-400 focus-within:border-slate-500">
+                            <span class="text-sm font-medium text-slate-600 select-none">20</span>
+                            <input type="text" id="input-year-suffix" value="26" maxlength="2" inputmode="numeric" pattern="[0-9]*" placeholder="26" class="w-10 text-center text-sm font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-md mx-1 py-0.5 focus:bg-white focus:outline-none">
+                            <span class="text-sm font-medium text-slate-600 select-none">年</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- テキストエリア（初期値は完全に空） -->
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-slate-600 mb-1.5">予定データペースト欄</label>
+                    <textarea id="raw-text-input" rows="12" class="w-full p-4 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-400 focus:border-slate-500 outline-none leading-relaxed" placeholder="ここに全員分の予定テキストを貼り付けてください..."></textarea>
+                </div>
+
+                <!-- 入力書式の凡例 -->
+                <div class="mb-5 p-4 bg-slate-50/90 border border-slate-200 rounded-xl text-xs text-slate-600">
+                    <div class="font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>入力書式の凡例（LINEやメモの書式にそのまま対応）</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="bg-white p-3 rounded-lg border border-slate-200/80 font-mono text-[11px] leading-relaxed text-slate-700">
+                            <div class="text-slate-400 mb-1 font-sans font-semibold">【記述例】</div>
+                            ①田中<br>
+                            11月<br>
+                            28→〜13:00<br>
+                            29→○<br>
+                            12月<br>
+                            1→15:00〜<br>
+                            2→9:00-11:00, 17:00-<br>
+                            3→×<br>
+                            4→△（バイト次第）
+                        </div>
+                        <div class="space-y-1.5 text-[11px] leading-relaxed">
+                            <p><strong class="text-slate-700">・人物名：</strong>「①名前」「1. 名前」「名前」のように1行で記載すると自動抽出されます。</p>
+                            <p><strong class="text-slate-700">・月と日付：</strong>「11月」の下に「28→〜」と書く形式、または「11/28→〜」の形式に対応しています。</p>
+                            <p><strong class="text-slate-700">・記号の意味：</strong><span class="font-semibold text-emerald-700">○</span>＝終日可（9:00〜21:00）、<span class="font-semibold text-amber-700">△</span>＝未定・調整中、<span class="font-semibold text-rose-700">×</span>＝参加不可。</p>
+                            <p><strong class="text-slate-700">・時間指定：</strong>「〜13:00（9:00〜13:00）」「15-（15:00〜21:00）」「13-17」など全角・半角どちらも自動解析します。カンマ区切りで複数時間帯にも対応します。</p>
+                            <p><strong class="text-slate-700">・備考メモ：</strong>「（19-ワンチャン）」のようにカッコ書きで書くと備考欄に自動反映されます。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 次へボタン -->
+                <div class="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                    <button onclick="parseAndProceed(3)" class="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition">
+                        優先度をスキップして表へ
+                    </button>
+                    <button onclick="parseAndProceed(2)" class="w-full sm:w-auto px-6 py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2">
+                        <span>人物を抽出して優先度設定へ</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 優先度設定画面 ==================== -->
+        <section id="view-step-2" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200/80 max-w-2xl mx-auto">
+                <div class="mb-5">
+                    <span class="inline-block px-2.5 py-1 text-xs font-semibold text-slate-600 bg-slate-100 rounded-full mb-2">任意設定・PC＆スマホドラッグ対応</span>
+                    <h2 class="text-xl font-bold text-slate-800">メンバーの優先度（並び順）を設定</h2>
+                    <p class="text-sm text-slate-500 mt-1">自動抽出されたメンバーを<strong>クリック＆ドラッグ（スマホ・タブレットは指でドラッグ）</strong>で上下に動かして優先順位を決めてください（上にあるほど優先度が高くなります）。</p>
+                </div>
+
+                <!-- 優先度リスト（PC・スマホタッチドラッグ対応） -->
+                <div id="priority-list" class="space-y-2.5 mb-6">
+                    <!-- JSで動的生成 -->
+                </div>
+
+                <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <button onclick="goToStep(1)" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition">
+                        ← 入力画面に戻る
+                    </button>
+                    <button onclick="applyPriorityAndShowTable()" class="px-6 py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center gap-2">
+                        <span>この順番で日程表を作成する</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== メイン可視化画面 ==================== -->
+        <section id="view-step-3" class="hidden">
+            <!-- ヘッダー -->
+            <header class="mb-6 bg-white p-6 rounded-2xl shadow-xs border border-slate-200/80">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div class="flex-1">
+                        <span class="inline-block px-3 py-1 text-xs font-semibold tracking-wider text-slate-600 uppercase bg-slate-100 rounded-full mb-2">
+                            日程調整マトリクス
+                        </span>
+                        <h1 id="display-title" class="text-2xl sm:text-3xl font-bold text-slate-800">
+                            FSC 練習日程調整
+                        </h1>
+                        <p class="text-sm text-slate-500 mt-1" id="display-subtitle">9:00〜21:00（2時間コマ）の空き状況を優先度順に可視化</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="goToStep(2)" class="inline-flex items-center px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition">
+                            優先度を変更
+                        </button>
+                        <button onclick="goToStep(1)" class="inline-flex items-center px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2.5 2.5 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            予定を再入力
+                        </button>
+                        <button onclick="copyRecommendedCSV()" class="inline-flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-xl shadow-xs transition">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            スプレッドシート用CSVコピー
+                        </button>
+                    </div>
+                </div>
+
+                <!-- コントロールパネル -->
+                <div class="mt-6 pt-5 border-t border-slate-100 grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                    <div class="lg:col-span-6">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">
+                            必須参加メンバー（クリックで固定・複数選択可）
+                        </label>
+                        <div id="member-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <div class="lg:col-span-3">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">
+                            最低参加人数
+                        </label>
+                        <select id="min-count-filter" onchange="renderTable()" class="w-full rounded-xl border-slate-300 bg-slate-50 text-sm font-medium text-slate-700 py-2 px-3 border focus:ring-2 focus:ring-slate-400 focus:border-slate-500">
+                        </select>
+                    </div>
+
+                    <div class="lg:col-span-3">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">
+                            期間絞り込み
+                        </label>
+                        <select id="period-filter" onchange="renderTable()" class="w-full rounded-xl border-slate-300 bg-slate-50 text-sm font-medium text-slate-700 py-2 px-3 border focus:ring-2 focus:ring-slate-400 focus:border-slate-500">
+                            <option value="all">全期間</option>
+                            <option value="early">前半（最初の1/3）</option>
+                            <option value="mid">中盤（真ん中の1/3）</option>
+                            <option value="late">後半（最後の1/3）</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 凡例・ステータス表示（落ち着いた色彩） -->
+                <div class="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-400 inline-block"></span> <strong>○</strong> 2時間まるごと参加可</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-400 inline-block"></span> <strong>△ / 一部</strong> 未定・ワンチャン・30分早退等</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 rounded bg-slate-100 border border-slate-300 inline-block"></span> <strong>空欄</strong> 未記入（要確認）</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 rounded bg-rose-100 border border-rose-300 inline-block"></span> <strong>×</strong> 参加不可</span>
+                    </div>
+                    <div id="result-summary" class="font-semibold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg">
+                        表示中: 0 コマ
+                    </div>
+                </div>
+            </header>
+
+            <!-- マトリクス表コンテナ -->
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden">
+                <div class="table-container overflow-x-auto max-h-[72vh]">
+                    <table class="w-full text-left border-collapse">
+                        <thead id="schedule-thead" class="bg-slate-100 text-slate-700 text-xs uppercase border-b border-slate-200">
+                        </thead>
+                        <tbody id="schedule-tbody" class="divide-y divide-slate-200 text-sm">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- トースト通知（全画面共通で表示されるようセクション外に配置） -->
+        <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-none">
+            通知メッセージ
+        </div>
+
+    </div>
+
+    <script>
+        // グローバル状態
+        let MEMBERS = [];
+        let SCHEDULE_DATA = [];
+        let requiredMembers = new Set();
+
+        const SLOTS = [
+            { id: '09-11', label: '09:00-11:00', start: 9.0, end: 11.0 },
+            { id: '11-13', label: '11:00-13:00', start: 11.0, end: 13.0 },
+            { id: '13-15', label: '13:00-15:00', start: 13.0, end: 15.0 },
+            { id: '15-17', label: '15:00-17:00', start: 15.0, end: 17.0 },
+            { id: '17-19', label: '17:00-19:00', start: 17.0, end: 19.0 },
+            { id: '19-21', label: '19:00-21:00', start: 19.0, end: 21.0 }
+        ];
+
+        // ステップ切り替え制御
+        function goToStep(stepNum) {
+            cleanupDrag(false);
+            [1, 2, 3].forEach(n => {
+                const view = document.getElementById(`view-step-${n}`);
+                const nav = document.getElementById(`nav-step-${n}`);
+                const badge = nav.querySelector('span:first-child');
+                if (n === stepNum) {
+                    view.classList.remove('hidden');
+                    nav.classList.remove('step-inactive');
+                    nav.classList.add('step-active');
+                    badge.classList.remove('bg-black/10');
+                    badge.classList.add('bg-white/20');
+                } else {
+                    view.classList.add('hidden');
+                    nav.classList.remove('step-active');
+                    nav.classList.add('step-inactive');
+                    badge.classList.remove('bg-white/20');
+                    badge.classList.add('bg-black/10');
+                }
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ナビゲーションバーからの直接遷移ガード
+        function tryGoToStep(stepNum) {
+            if (MEMBERS.length === 0 || SCHEDULE_DATA.length === 0) {
+                parseAndProceed(stepNum);
+            } else {
+                if (stepNum === 2) renderPriorityList();
+                if (stepNum === 3) {
+                    setupTableControls();
+                    renderTable();
+                }
+                goToStep(stepNum);
+            }
+        }
+
+        // テキストクリア
+        function clearInputText() {
+            document.getElementById('raw-text-input').value = '';
+            MEMBERS = [];
+            SCHEDULE_DATA = [];
+            document.getElementById('raw-text-input').focus();
+            showToast('入力欄をクリアしました');
+        }
+
+        // タイトル同期（入力ページでの変更を即座に反映）
+        function syncTitleFromInput() {
+            const newTitle = document.getElementById('input-title').value.trim() || 'FSC 練習日程調整';
+            document.getElementById('display-title').textContent = newTitle;
+            document.title = newTitle;
+        }
+
+        // 全角→半角変換ユーティリティ
+        function normalizeStr(str) {
+            return str
+                .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+                .replace(/：/g, ':')
+                .replace(/[〜～~−ー—―]/g, '-')
+                .replace(/[〇◯]/g, '○')
+                .replace(/[✕✖✗Xx]/g, '×')
+                .trim();
+        }
+
+        // 時間表記（例: "9", "10:45"）を数値に変換
+        function parseTimeVal(tStr) {
+            if (!tStr) return null;
+            const parts = tStr.split(':');
+            const h = parseInt(parts[0], 10);
+            if (isNaN(h)) return null;
+            const m = parts[1] ? parseInt(parts[1], 10) : 0;
+            return h + (m / 60);
+        }
+
+        // 1日分のテキスト表現をパースして配列/ステータスに変換
+        function parseAvailabilityExpr(rawExpr) {
+            const norm = normalizeStr(rawExpr);
+            let noteMatch = rawExpr.match(/[（(]([^）)]+)[）)]/);
+            let noteText = noteMatch ? noteMatch[1] : '';
+            let body = norm.replace(/[（(][^）)]+[）)]/g, '').trim();
+
+            if (!body) {
+                if (noteText.includes('ワンチャン') || noteText.includes('△')) {
+                    return { data: [[9, 21, 'maybe', `△(${noteText})`]], note: noteText };
+                }
+                return { data: 'blank', note: noteText };
+            }
+
+            if (body === '×') return { data: 'ng', note: noteText };
+            if (body === '○') return { data: [[9, 21, 'ok']], note: noteText };
+            if (body === '△') return { data: [[9, 21, 'maybe', noteText ? `△(${noteText})` : '△']], note: noteText };
+            if (body.includes('朝○')) return { data: [[9, 12, 'ok']], note: noteText || '朝○' };
+
+            const tokens = body.replace(/○/g, '').split(/[、,\s]+/).filter(Boolean);
+            const ranges = [];
+
+            for (const tok of tokens) {
+                let mEndOnly = tok.match(/^-(\d{1,2}(?::\d{2})?)$/);
+                if (mEndOnly) {
+                    const endT = parseTimeVal(mEndOnly[1]);
+                    if (endT !== null) {
+                        ranges.push([9, endT, 'ok']);
+                        continue;
+                    }
+                }
+                let mStartOnly = tok.match(/^(\d{1,2}(?::\d{2})?)-$/);
+                if (mStartOnly) {
+                    const startT = parseTimeVal(mStartOnly[1]);
+                    if (startT !== null) {
+                        ranges.push([startT, 21, 'ok']);
+                        continue;
+                    }
+                }
+                let mBoth = tok.match(/^(\d{1,2}(?::\d{2})?)-(\d{1,2}(?::\d{2})?)$/);
+                if (mBoth) {
+                    const sT = parseTimeVal(mBoth[1]);
+                    const eT = parseTimeVal(mBoth[2]);
+                    if (sT !== null && eT !== null) {
+                        ranges.push([sT, eT, 'ok']);
+                        continue;
+                    }
+                }
+            }
+
+            if (ranges.length > 0) {
+                return { data: ranges, note: noteText };
+            }
+
+            return { data: [[9, 21, 'maybe', body]], note: noteText };
+        }
+
+        // テキスト全体を解析する高精度パーサー（日付やメモ書きを人名として誤認しない設計）
+        function parseRawScheduleText(text, baseYear) {
+            const lines = text.split(/\r?\n/);
+            const parsedMembers = [];
+            let currentMember = null;
+            let currentMonth = null;
+            const allDateKeys = new Set();
+
+            // 月見出し判定（例: "11月", "12月", "2026年12月"）
+            const monthHeaderRegex = /^(?:\d{4}年)?(\d{1,2})月\s*$/;
+            // 日付行判定（全角半角正規化後にマッチ：例 "28->-13:00", "28 -15:00", "12/1->○", "1日:○", "28(土) ○", "28 ○"）
+            const dayLineRegex = /^(?:(\d{1,2})\/)?(\d{1,2})日?(?:\s*\([月火水木金土日]\))?\s*(?:->|→|:|\s+)?\s*(.+)$/;
+            // 番号・記号付き人物見出し判定（例: "①纐纈", "1. 田中", "【佐藤】", "■鈴木"）
+            const decoratedMemberRegex = /^(?:[①-⑳]|\d+[\.．\s\)）]|[・■●◆▼【\[])\s*(.+?)\s*[】\]]?$/;
+
+            for (let rawLine of lines) {
+                const line = rawLine.trim();
+                if (!line) continue;
+
+                const normLine = normalizeStr(line);
+
+                // 1. 月の切り替え判定
+                const mMonth = normLine.match(monthHeaderRegex);
+                if (mMonth) {
+                    currentMonth = parseInt(mMonth[1], 10);
+                    continue;
+                }
+
+                // 2. 日付データの解析判定（数字から始まる日程行を最優先で捕捉）
+                const mDay = normLine.match(dayLineRegex);
+                if (mDay) {
+                    const explicitMonth = mDay[1] ? parseInt(mDay[1], 10) : currentMonth;
+                    const dayNum = parseInt(mDay[2], 10);
+                    // 元の文字列から日付プレフィックスを除去した表現を取得（カッコ内メモ保持のため）
+                    const rawExpr = line.replace(/^(?:[0-9０-９]{1,2}\/)?[0-9０-９]{1,2}日?(?:\s*[\(（][月火水木金土日][\)）])?\s*(?:→|->|：|:|\s+)?\s*/, '').trim();
+
+                    if (explicitMonth && dayNum >= 1 && dayNum <= 31 && rawExpr.length > 0) {
+                        if (!currentMember) {
+                            currentMember = {
+                                id: 'm_0_' + Math.random().toString(36).substring(2, 6),
+                                name: 'メンバー1',
+                                schedules: {}
+                            };
+                            parsedMembers.push(currentMember);
+                        }
+                        const dateKey = `${explicitMonth}/${dayNum}`;
+                        allDateKeys.add(dateKey);
+                        currentMember.schedules[dateKey] = parseAvailabilityExpr(rawExpr);
+                        continue;
+                    }
+                }
+
+                // 3. 人物名の抽出判定
+                // 日付や時間帯・記号・メモ書きなどを厳密に除外して人名のみを抽出
+                const isTimeOrSymbolLine =
+                    /^[0-9０-９]/.test(line) ||
+                    line.includes('→') ||
+                    line.includes('->') ||
+                    line.includes('〜') ||
+                    line.includes('～') ||
+                    /\d{1,2}:\d{2}/.test(normLine) ||
+                    /^[○×△〇✕]/.test(normLine) ||
+                    /^(?:※|注|備考|メモ|期間|日程|練習)/.test(line);
+
+                if (isTimeOrSymbolLine) {
+                    continue;
+                }
+
+                let extractedName = null;
+                const mDecorated = line.match(decoratedMemberRegex);
+                if (mDecorated) {
+                    extractedName = mDecorated[1].trim();
+                } else if (line.length <= 16 && !/[、。！？!?]/.test(line)) {
+                    // 記号なしのプレーンな名前行（例：「田中」「佐藤 太郎」「山田さん」）
+                    extractedName = line.replace(/[：:]+$/, '').trim();
+                }
+
+                // 抽出した文字列が有効な人名か最終チェック（数字のみ・記号のみを弾く）
+                if (extractedName && !/^[0-9０-９\-\/:○×△〇✕\s]+$/.test(extractedName)) {
+                    const existing = parsedMembers.find(m => m.name === extractedName);
+                    if (existing) {
+                        currentMember = existing;
+                    } else {
+                        const id = 'm_' + parsedMembers.length + '_' + Math.random().toString(36).substring(2, 6);
+                        currentMember = {
+                            id: id,
+                            name: extractedName,
+                            schedules: {}
+                        };
+                        parsedMembers.push(currentMember);
+                    }
+                }
+            }
+
+            // 日程が1日も紐づいていない誤抽出メンバーがいれば除外
+            const validMembers = parsedMembers.filter(m => Object.keys(m.schedules).length > 0);
+
+            // 日付リストを時系列ソート
+            const sortedDateKeys = Array.from(allDateKeys).sort((a, b) => {
+                const [mA, dA] = a.split('/').map(Number);
+                const [mB, dB] = b.split('/').map(Number);
+                const hasLateYear = Array.from(allDateKeys).some(k => parseInt(k.split('/')[0], 10) >= 10);
+                const adjMA = (hasLateYear && mA <= 3) ? mA + 12 : mA;
+                const adjMB = (hasLateYear && mB <= 3) ? mB + 12 : mB;
+                if (adjMA !== adjMB) return adjMA - adjMB;
+                return dA - dB;
+            });
+
+            const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+            const totalDays = sortedDateKeys.length;
+            const hasLateYear = sortedDateKeys.some(k => parseInt(k.split('/')[0], 10) >= 10);
+
+            const scheduleList = sortedDateKeys.map((dateKey, idx) => {
+                const [m, d] = dateKey.split('/').map(Number);
+                const yearOffset = (hasLateYear && m <= 3) ? 1 : 0;
+                const dateObj = new Date(baseYear + yearOffset, m - 1, d);
+                const wStr = weekdays[dateObj.getDay()];
+
+                let period = 'mid';
+                if (idx < totalDays / 3) period = 'early';
+                else if (idx >= (totalDays * 2) / 3) period = 'late';
+
+                const dayObj = {
+                    date: `${m}/${d}(${wStr})`,
+                    period: period,
+                    note: ''
+                };
+
+                const notes = [];
+                validMembers.forEach(mObj => {
+                    const entry = mObj.schedules[dateKey];
+                    if (entry) {
+                        dayObj[mObj.id] = entry.data;
+                        if (entry.note) {
+                            notes.push(`${mObj.name}:${entry.note}`);
+                        }
+                    } else {
+                        dayObj[mObj.id] = 'blank';
+                    }
+                });
+                dayObj.note = notes.join(' / ');
+                return dayObj;
+            });
+
+            return {
+                members: validMembers,
+                schedule: scheduleList
+            };
+        }
+
+        // 優先度ランク番号を配列の並び順と同期
+        function syncMemberRanks() {
+            MEMBERS.forEach((m, idx) => {
+                m.rank = idx + 1;
+            });
+        }
+
+        // 遷移処理（バグ修復済み・完全版）
+        function parseAndProceed(nextStep) {
+            const rawText = document.getElementById('raw-text-input').value;
+            const titleInput = document.getElementById('input-title').value.trim() || 'FSC 練習日程調整';
+            const suffixRaw = normalizeStr(document.getElementById('input-year-suffix').value || '').replace(/[^0-9]/g, '');
+            const yearSuffix = suffixRaw.length > 0 ? parseInt(suffixRaw, 10) : 26;
+            const yearInput = 2000 + yearSuffix;
+
+            if (!rawText.trim()) {
+                showToast('予定テキストを入力してください');
+                return;
+            }
+
+            const parsed = parseRawScheduleText(rawText, yearInput);
+
+            if (parsed.members.length === 0 || parsed.schedule.length === 0) {
+                showToast('予定データを認識できませんでした。凡例の書式（例：11月 / 28→○）を確認してください');
+                return;
+            }
+
+            MEMBERS = parsed.members;
+            SCHEDULE_DATA = parsed.schedule;
+            requiredMembers.clear();
+            syncMemberRanks();
+
+            // 入力ページで設定されたタイトルを反映
+            document.getElementById('display-title').textContent = titleInput;
+            document.title = titleInput;
+
+            if (nextStep === 2) {
+                renderPriorityList();
+                goToStep(2);
+                showToast(`${MEMBERS.length}名の予定を抽出しました。優先度を設定してください`);
+            } else {
+                setupTableControls();
+                renderTable();
+                goToStep(3);
+                showToast(`${MEMBERS.length}名・${SCHEDULE_DATA.length}日分の予定を読み込みました`);
+            }
+        }
+
+        // 優先度設定リストの描画（マウス・指の動きにリアルタイム連動するドラッグ＆ドロップ対応）
+        let activeDragState = null;
+
+        // 浮遊カードやイベントリスナーを確実に後片付けする関数
+        function cleanupDrag(commitOrder) {
+            window.removeEventListener('pointermove', onPointerDragMove);
+            window.removeEventListener('pointerup', onPointerDragEnd);
+            window.removeEventListener('pointercancel', onPointerDragEnd);
+            window.removeEventListener('blur', onWindowBlurDragCancel);
+
+            if (activeDragState) {
+                const { sourceItem, pointerId, floating, startIndex } = activeDragState;
+                try {
+                    if (sourceItem && sourceItem.hasPointerCapture && sourceItem.hasPointerCapture(pointerId)) {
+                        sourceItem.releasePointerCapture(pointerId);
+                    }
+                } catch (_) {}
+
+                if (commitOrder) {
+                    const container = document.getElementById('priority-list');
+                    const newIndex = container ? Array.from(container.children).indexOf(sourceItem) : -1;
+                    if (newIndex !== -1 && newIndex !== startIndex) {
+                        const [moved] = MEMBERS.splice(startIndex, 1);
+                        MEMBERS.splice(newIndex, 0, moved);
+                    }
+                }
+
+                if (sourceItem) {
+                    sourceItem.classList.remove('drag-placeholder-item');
+                }
+                if (floating && floating.parentNode) {
+                    floating.parentNode.removeChild(floating);
+                }
+                activeDragState = null;
+            }
+
+            // 万が一残っている浮遊要素があればすべて削除
+            document.querySelectorAll('.drag-floating').forEach(el => el.remove());
+        }
+
+        function onWindowBlurDragCancel() {
+            if (activeDragState) {
+                cleanupDrag(false);
+                renderPriorityList();
+            }
+        }
+
+        function renderPriorityList() {
+            cleanupDrag(false);
+            syncMemberRanks();
+            const container = document.getElementById('priority-list');
+            container.innerHTML = '';
+
+            MEMBERS.forEach((m, index) => {
+                const item = document.createElement('div');
+                item.className = 'drag-item flex items-center justify-between p-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl hover:bg-white hover:border-slate-400 cursor-grab active:cursor-grabbing';
+                item.dataset.index = index;
+
+                // PCマウス・スマホ／タブレット共通のポインタードラッグ開始
+                item.addEventListener('pointerdown', (e) => {
+                    if (e.target.closest('button')) return;
+                    if (e.pointerType === 'mouse' && e.button !== 0) return;
+                    e.preventDefault();
+                    startPointerDrag(e, item, index);
+                });
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-3 pointer-events-none">
+                        <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path>
+                        </svg>
+                        <span class="w-8 h-8 rounded-lg ${index < 3 ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'} font-bold text-xs flex items-center justify-center shrink-0">
+                            ${m.rank}位
+                        </span>
+                        <span class="font-bold text-slate-800 text-base">${m.name}</span>
+                        ${index < 3 ? '<span class="text-[10px] font-semibold px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full">上位枠</span>' : ''}
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button type="button" onclick="moveMemberPriority(${index}, -1)" ${index === 0 ? 'disabled' : ''} class="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition" title="1つ上へ">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                        </button>
+                        <button type="button" onclick="moveMemberPriority(${index}, 1)" ${index === MEMBERS.length - 1 ? 'disabled' : ''} class="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition" title="1つ下へ">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function startPointerDrag(e, item, startIndex) {
+            // 既存のドラッグ状態があれば先にクリーンアップ
+            if (activeDragState) {
+                cleanupDrag(false);
+            }
+
+            const rect = item.getBoundingClientRect();
+
+            // マウスや指に追従して動くフローティングカード
+            const floating = item.cloneNode(true);
+            floating.classList.add('drag-floating');
+            floating.style.position = 'fixed';
+            floating.style.left = `${rect.left}px`;
+            floating.style.top = `${rect.top}px`;
+            floating.style.width = `${rect.width}px`;
+            floating.style.height = `${rect.height}px`;
+            floating.style.zIndex = '1000';
+            floating.style.pointerEvents = 'none';
+            floating.style.margin = '0';
+
+            // 元の要素をDOMに残したままプレースホルダー化（pointerup/cancelの取りこぼしを防止）
+            item.classList.add('drag-placeholder-item');
+            document.body.appendChild(floating);
+
+            try {
+                item.setPointerCapture(e.pointerId);
+            } catch (_) {}
+
+            activeDragState = {
+                pointerId: e.pointerId,
+                startY: e.clientY,
+                startX: e.clientX,
+                floating: floating,
+                sourceItem: item,
+                startIndex: startIndex
+            };
+
+            window.addEventListener('pointermove', onPointerDragMove, { passive: false });
+            window.addEventListener('pointerup', onPointerDragEnd);
+            window.addEventListener('pointercancel', onPointerDragEnd);
+            window.addEventListener('blur', onWindowBlurDragCancel);
+        }
+
+        function onPointerDragMove(e) {
+            if (!activeDragState || e.pointerId !== activeDragState.pointerId) return;
+            if (e.cancelable) e.preventDefault();
+
+            const dy = e.clientY - activeDragState.startY;
+            const dx = (e.clientX - activeDragState.startX) * 0.15;
+            activeDragState.floating.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(1.02)`;
+
+            const floatRect = activeDragState.floating.getBoundingClientRect();
+            const floatCenterY = floatRect.top + floatRect.height / 2;
+
+            const container = document.getElementById('priority-list');
+            const children = Array.from(container.children);
+            const sourceItem = activeDragState.sourceItem;
+
+            // ポインターの位置に応じて他のカードとリアルタイムに入れ替え
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                if (child === sourceItem) continue;
+
+                const childRect = child.getBoundingClientRect();
+                const childCenterY = childRect.top + childRect.height / 2;
+                const currentIndex = Array.from(container.children).indexOf(sourceItem);
+
+                if (i < currentIndex && floatCenterY < childCenterY) {
+                    container.insertBefore(sourceItem, child);
+                    break;
+                } else if (i > currentIndex && floatCenterY > childCenterY) {
+                    container.insertBefore(sourceItem, child.nextSibling);
+                    break;
+                }
+            }
+        }
+
+        function onPointerDragEnd(e) {
+            if (!activeDragState || e.pointerId !== activeDragState.pointerId) return;
+            cleanupDrag(true);
+            syncMemberRanks();
+            renderPriorityList();
+        }
+
+        function moveMemberPriority(index, direction) {
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= MEMBERS.length) return;
+            const temp = MEMBERS[index];
+            MEMBERS[index] = MEMBERS[targetIndex];
+            MEMBERS[targetIndex] = temp;
+            syncMemberRanks();
+            renderPriorityList();
+        }
+
+        function applyPriorityAndShowTable() {
+            syncMemberRanks();
+            setupTableControls();
+            renderTable();
+            goToStep(3);
+            showToast('優先度を反映して日程表を作成しました！');
+        }
+
+        // STEP 3: コントロールとテーブルヘッダーの動的セットアップ
+        function setupTableControls() {
+            syncMemberRanks();
+            const countSelect = document.getElementById('min-count-filter');
+            countSelect.innerHTML = `<option value="0">すべて表示 (0人〜)</option>`;
+            const total = MEMBERS.length;
+            const defaultMin = Math.max(1, total - 2);
+
+            for (let i = Math.max(1, total - 3); i <= total; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i === total ? `全員参加 (${i}人)` : `${i}人以上参加可能${i === defaultMin ? '（おすすめ）' : ''}`;
+                if (i === defaultMin) opt.selected = true;
+                countSelect.appendChild(opt);
+            }
+
+            const thead = document.getElementById('schedule-thead');
+            let thHtml = `
+                <tr>
+                    <th class="sticky-corner left-0 bg-slate-100 px-3 py-3.5 font-bold w-24 min-w-[96px] border-r border-slate-200">日付</th>
+                    <th class="sticky-corner left-[96px] bg-slate-100 px-3 py-3.5 font-bold w-28 min-w-[112px] border-r border-slate-200">時間帯</th>
+                    <th class="sticky-header bg-slate-100 px-3 py-3.5 font-bold text-center w-24 min-w-[96px] border-r border-slate-200">参加数</th>
+            `;
+            MEMBERS.forEach((m, idx) => {
+                const isTop = idx < 3;
+                thHtml += `
+                    <th class="sticky-header ${isTop ? 'bg-slate-200/80' : 'bg-slate-100'} px-3 py-3 font-bold text-center min-w-[100px] border-r border-slate-200">
+                        <div class="text-[10px] ${isTop ? 'text-slate-700' : 'text-slate-500'}">優先${m.rank}位</div>
+                        <div class="text-sm text-slate-900">${m.name}</div>
+                    </th>
+                `;
+            });
+            thHtml += `<th class="sticky-header bg-slate-100 px-4 py-3.5 font-bold min-w-[200px]">備考・特記事項</th></tr>`;
+            thead.innerHTML = thHtml;
+
+            initFilters();
+        }
+
+        function initFilters() {
+            const container = document.getElementById('member-filters');
+            container.innerHTML = '';
+            MEMBERS.forEach(m => {
+                const btn = document.createElement('button');
+                btn.id = `filter-btn-${m.id}`;
+                btn.className = `px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-150 bg-white text-slate-700 border-slate-300 hover:bg-slate-50`;
+                btn.innerHTML = `<span class="text-[10px] opacity-70 mr-1">${m.rank}.</span>${m.name}`;
+                btn.onclick = () => toggleMemberFilter(m.id);
+                container.appendChild(btn);
+            });
+        }
+
+        function toggleMemberFilter(memberId) {
+            const btn = document.getElementById(`filter-btn-${memberId}`);
+            if (requiredMembers.has(memberId)) {
+                requiredMembers.delete(memberId);
+                btn.className = `px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-150 bg-white text-slate-700 border-slate-300 hover:bg-slate-50`;
+            } else {
+                requiredMembers.add(memberId);
+                btn.className = `px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-150 bg-slate-700 text-white border-slate-700 shadow-xs`;
+            }
+            renderTable();
+        }
+
+        function evaluateSlot(memberData, slotStart, slotEnd) {
+            if (!memberData || memberData === 'blank') {
+                return { status: 'blank', text: '未記入', weight: 0.2 };
+            }
+            if (memberData === 'ng') {
+                return { status: 'ng', text: '×', weight: 0 };
+            }
+
+            let bestResult = { status: 'ng', text: '×', weight: 0 };
+
+            for (const range of memberData) {
+                const [rStart, rEnd, type, customLabel] = range;
+                const overlapStart = Math.max(slotStart, rStart);
+                const overlapEnd = Math.min(slotEnd, rEnd);
+                const overlapDuration = overlapEnd - overlapStart;
+
+                if (overlapDuration >= 2.0) {
+                    if (type === 'maybe') {
+                        return { status: 'maybe', text: customLabel || '△', weight: 0.5 };
+                    }
+                    return { status: 'ok', text: '○', weight: 1.0 };
+                } else if (overlapDuration >= 1.0) {
+                    const formatTime = (t) => {
+                        const h = Math.floor(t);
+                        const m = Math.round((t - h) * 60);
+                        return m === 0 ? `${h}時` : `${h}:${m.toString().padStart(2, '0')}`;
+                    };
+                    const label = rStart > slotStart ? `${formatTime(rStart)}〜` : `〜${formatTime(rEnd)}`;
+                    if (bestResult.weight < 0.7) {
+                        bestResult = { status: 'partial', text: `△(${label})`, weight: 0.7 };
+                    }
+                }
+            }
+            return bestResult;
+        }
+
+        function getCellBadge(evalResult) {
+            switch (evalResult.status) {
+                case 'ok':
+                    return `<span class="inline-flex items-center justify-center w-full py-1 px-2 rounded-lg bg-emerald-100/80 text-emerald-800 font-bold text-xs border border-emerald-300/80">○</span>`;
+                case 'partial':
+                case 'maybe':
+                    return `<span class="inline-flex items-center justify-center w-full py-1 px-1.5 rounded-lg bg-amber-100/80 text-amber-800 font-semibold text-[11px] border border-amber-300/80 whitespace-nowrap">${evalResult.text}</span>`;
+                case 'blank':
+                    return `<span class="inline-flex items-center justify-center w-full py-1 px-2 rounded-lg bg-slate-100 text-slate-400 text-[11px] border border-slate-200">-</span>`;
+                case 'ng':
+                default:
+                    return `<span class="inline-flex items-center justify-center w-full py-1 px-2 rounded-lg bg-rose-100/70 text-rose-700 font-medium text-xs border border-rose-200">×</span>`;
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('schedule-tbody');
+            const minCount = parseInt(document.getElementById('min-count-filter').value, 10) || 0;
+            const periodFilter = document.getElementById('period-filter').value;
+            const totalMembers = MEMBERS.length;
+
+            tbody.innerHTML = '';
+            let displayedRows = 0;
+
+            SCHEDULE_DATA.forEach(day => {
+                if (periodFilter !== 'all' && day.period !== periodFilter) return;
+
+                const isWeekend = day.date.includes('(土)') || day.date.includes('(日)');
+                const dateColorClass = day.date.includes('(日)') ? 'text-rose-700' : (day.date.includes('(土)') ? 'text-slate-700 underline decoration-slate-400' : 'text-slate-800');
+
+                SLOTS.forEach(slot => {
+                    let okCount = 0;
+                    let maybeCount = 0;
+                    const memberEvals = {};
+
+                    MEMBERS.forEach(m => {
+                        const res = evaluateSlot(day[m.id], slot.start, slot.end);
+                        memberEvals[m.id] = res;
+                        if (res.status === 'ok') okCount++;
+                        else if (res.status === 'partial' || res.status === 'maybe') maybeCount++;
+                    });
+
+                    if (okCount < minCount) return;
+
+                    let meetsRequired = true;
+                    requiredMembers.forEach(reqId => {
+                        const st = memberEvals[reqId]?.status;
+                        if (st !== 'ok' && st !== 'partial' && st !== 'maybe') {
+                            meetsRequired = false;
+                        }
+                    });
+                    if (!meetsRequired) return;
+
+                    displayedRows++;
+
+                    let rowBg = 'bg-white hover:bg-slate-50';
+                    if (okCount === totalMembers) rowBg = 'bg-emerald-50/40 hover:bg-emerald-50/70';
+                    else if (okCount >= Math.max(1, totalMembers - 1)) rowBg = 'bg-slate-50/80 hover:bg-slate-100/80';
+
+                    const tr = document.createElement('tr');
+                    tr.className = `${rowBg} transition-colors`;
+
+                    let html = `
+                        <td class="sticky-col-1 ${isWeekend ? 'bg-stone-100' : 'bg-white'} px-3 py-2.5 font-bold ${dateColorClass} border-r border-slate-200 whitespace-nowrap">
+                            ${day.date}
+                        </td>
+                        <td class="sticky-col-2 bg-white px-3 py-2.5 font-medium text-slate-600 border-r border-slate-200 whitespace-nowrap text-xs">
+                            ${slot.label}
+                        </td>
+                        <td class="px-3 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
+                            <span class="font-bold text-base ${okCount >= Math.max(1, totalMembers - 1) ? 'text-emerald-700' : 'text-slate-700'}">${okCount}</span><span class="text-xs text-slate-400">/${totalMembers}人</span>
+                            ${maybeCount > 0 ? `<span class="block text-[10px] text-amber-700 font-medium">+△${maybeCount}</span>` : ''}
+                        </td>
+                    `;
+
+                    MEMBERS.forEach(m => {
+                        html += `<td class="px-2 py-2 border-r border-slate-200 text-center">${getCellBadge(memberEvals[m.id])}</td>`;
+                    });
+
+                    html += `<td class="px-4 py-2.5 text-xs text-slate-500">${day.note || ''}</td>`;
+
+                    tr.innerHTML = html;
+                    tbody.appendChild(tr);
+                });
+            });
+
+            if (displayedRows === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${MEMBERS.length + 4}" class="py-12 text-center text-slate-500">
+                            条件に一致するコマが見つかりませんでした。「最低参加人数」や「必須参加メンバー」の絞り込みを緩めてお試しください。
+                        </td>
+                    </tr>
+                `;
+            }
+
+            document.getElementById('result-summary').textContent = `表示中: ${displayedRows} コマ`;
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function copyRecommendedCSV() {
+            if (MEMBERS.length === 0 || SCHEDULE_DATA.length === 0) {
+                showToast('先に予定データを入力してください');
+                return;
+            }
+            const minCount = parseInt(document.getElementById('min-count-filter').value, 10) || 0;
+            const periodFilter = document.getElementById('period-filter').value;
+
+            let csv = `日付\t時間帯\t確定参加数\t` + MEMBERS.map(m => `${m.name}(優先${m.rank}位)`).join('\t') + `\t備考\n`;
+            SCHEDULE_DATA.forEach(day => {
+                if (periodFilter !== 'all' && day.period !== periodFilter) return;
+
+                SLOTS.forEach(slot => {
+                    let okCount = 0;
+                    const rowCells = [];
+                    let meetsRequired = true;
+
+                    MEMBERS.forEach(m => {
+                        const res = evaluateSlot(day[m.id], slot.start, slot.end);
+                        if (res.status === 'ok') okCount++;
+                        if (requiredMembers.has(m.id) && res.status !== 'ok' && res.status !== 'partial' && res.status !== 'maybe') {
+                            meetsRequired = false;
+                        }
+                        rowCells.push(res.text);
+                    });
+
+                    if (okCount >= minCount && meetsRequired) {
+                        csv += `${day.date}\t${slot.label}\t${okCount}人\t${rowCells.join('\t')}\t${day.note || ''}\n`;
+                    }
+                });
+            });
+
+            const textarea = document.createElement('textarea');
+            textarea.value = csv;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            showToast('現在表示中の日程表データをスプレッドシート用（タブ区切り）にコピーしました！');
+        }
+
+        // 初期化：汎用化のため空の入力画面（STEP 1）から開始
+        window.onload = () => {
+            goToStep(1);
+        };
+    </script>
+</body>
+</html>
